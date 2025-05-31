@@ -1,17 +1,46 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, HttpUrl
+from typing import List, Dict, Any, Optional, Union
 import uvicorn
 import os
 import redis
+import json # For SSE
+import asyncio # For SSE
 
 # Import necessary Manus agent components from openmanus_core
 from openmanus_core.app.agent.manus import ManusAgent # Example
 from openmanus_core.app.config import load_config # Example
+
+# Import the agent service
+from pharma_agent.agent_service import process_research_request
 
 app = FastAPI(
     title="PharmaDB Research Agent",
     description="An AI agent for deep research in PharmaDB using OpenManus.",
     version="0.1.0"
 )
+
+# --- Pydantic Models for /ask endpoint ---
+class FileReference(BaseModel):
+    url: HttpUrl
+    # Potentially add other metadata like file_type, size, etc.
+
+class AskRequest(BaseModel):
+    conversation_id: Optional[str] = None
+    question: str
+    file_refs: Optional[List[FileReference]] = []
+    history: Optional[List[Dict[str, Any]]] = [] # Each dict could be a previous Q/A turn
+
+class Citation(BaseModel):
+    source: str # e.g., filename, URL
+    text: str   # Relevant snippet
+
+class AskResponse(BaseModel):
+    answer: str
+    citations: List[Citation]
+    trace: Dict[str, Any]
+    conversation_id: Optional[str] = None
 
 # Global variables to hold the initialized components
 config = None
@@ -74,11 +103,45 @@ async def health_check():
     # TODO: Add more sophisticated health checks (e.g., check LLM connectivity, Redis)
     return {"status": "ok"}
 
-# TODO: Define /ask endpoint (T11)
-# @app.post("/ask")
-# async def ask_agent():
-#     # Placeholder for T11
-#     return {"message": "Ask endpoint not yet implemented"}
+# Define /ask endpoint (T11)
+@app.post("/ask", response_model=AskResponse, summary="Ask the Research Agent")
+async def ask_agent(request: AskRequest):
+    """Receives a research question, file references, and conversation history, then returns an answer."""
+    if not manus_agent:
+        raise HTTPException(status_code=503, detail="ManusAgent not initialized. Check server logs.")
+    
+    # For now, directly call the placeholder. Later, this will involve SSE.
+    response_data = await process_research_request(
+        question=request.question,
+        file_refs=request.file_refs,
+        history=request.history,
+        agent=manus_agent,
+        redis_client=redis_client
+    )
+    response_data["conversation_id"] = request.conversation_id
+    return AskResponse(**response_data)
+
+# Placeholder for SSE streaming version of /ask
+# @app.post("/ask-stream")
+# async def ask_agent_stream(request: AskRequest):
+#     if not manus_agent:
+#         raise HTTPException(status_code=503, detail="ManusAgent not initialized. Check server logs.")
+
+#     async def event_generator():
+#         # Mock streaming data for now
+#         yield f"data: {json.dumps({'type': 'thought', 'content': 'Starting research...'})}\n\n"
+#         await asyncio.sleep(1)
+#         yield f"data: {json.dumps({'type': 'action', 'tool': 'some_tool', 'input': 'some_input'})}\n\n"
+#         await asyncio.sleep(1)
+#         # ... call actual agent logic that yields events ...
+#         final_result = await process_research_request(
+#             question=request.question, file_refs=request.file_refs, history=request.history,
+#             agent=manus_agent, redis_client=redis_client
+#         )
+#         final_result["conversation_id"] = request.conversation_id
+#         yield f"data: {json.dumps({'type': 'result', 'data': final_result})}\n\n"
+
+#     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # TODO: Define /metrics endpoint (T12) if needed
 
