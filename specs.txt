@@ -1,0 +1,92 @@
+SUMMARY (TL;DR)
+We’re building a self-hosted micro-service (OpenManus on Render) that receives a user’s question and file URLs from the PharmaDB web app, autonomously decides which tool to run (DuckDB for CSVs, vector‑store search for PDFs, optional web search), streams its chain‑of‑thought, and returns a single, citation‑rich answer for display in the PharmaDB chat UI.
+
+OpenManus repo (active fork): https://github.com/FoundationAgents/OpenManus
+
+---
+
+# Implementing a Deep Research AI Agent in PharmaDB with OpenManus
+
+## 1  Architecture at a Glance
+| Layer              | Technology                              |
+|--------------------|-----------------------------------------|
+| Frontend           | Existing PharmaDB Next.js (Vercel)      |
+| Agent Micro‑service| OpenManus (Python 3.12)                 |
+| LLM provider       | OpenAI GPT‑4o (fallback Claude 3)       |
+| Tabular queries    | DuckDB Python package                   |
+| PDF retrieval      | PyMuPDF + ChromaDB (in‑memory)          |
+| Web search         | Bing Search v7 API                      |
+| In‑memory cache    | Redis (Render)                          |
+| Deployment         | Render Web Service (Docker)             |
+
+## 2  User Journey (happy path)
+1. User types a question and selects CSV/PDF URLs.
+2. Frontend POSTs `{conversation_id, question, file_refs, history}` to `/ask`.
+3. OpenManus plans tool calls.
+4. Agent runs DuckDB/PDF search/web search tools.
+5. Thought/action events stream back; UI shows live trace.
+6. Final JSON (`answer`, `citations`, `trace`) rendered in chat.
+
+## 3  Task Breakdown
+### 3.1 Repo & Deployment
+- **T1** Create repo `pharmadb-openmanus`
+  • init Poetry / requirements.txt
+- **T2** Render blueprint `render.yaml`
+  • env vars: OPENAI_API_KEY, BING_KEY
+- **T3** Dockerfile (python:3.12‑slim)
+  • install PyMuPDF libs
+  • expose PORT
+
+### 3.2 OpenManus Setup
+- **T4** Clone OpenManus source
+- **T5** `main.py` FastAPI: initialise Manus agent, Redis
+
+### 3.3 Custom Tools
+- **T6** CSVQueryTool (DuckDB) …
+- **T7** PDFSearchTool (PyMuPDF + Chroma) …
+- **T8** WebSearchTool (Bing API) …
+
+### 3.4 Agent Prompt & Planning
+- **T9** System prompt lists tool schemas
+- **T10** Enable streaming thoughts
+
+### 3.5 API Layer
+- **T11** POST /ask route (+SSE)
+- **T12** /healthz, /metrics
+
+### 3.6 Frontend Integration
+- **T13** callAgent() util (SSE)
+- **T14** Trace panel UI
+
+### 3.7 Persistence & Limits
+- **T15** Chat history in Redis, token trim
+- **T16** File-index cache in Redis
+
+### 3.8 Testing
+- **T17** Unit tests per tool
+- **T18** End‑to‑end mock CSV & PDF
+- **T19** Load test (k6)
+
+### 3.9 Observability
+- **T20** OpenTelemetry to logs
+- **T21** Render uptime check
+
+### 3.10 Security
+- **T22** HMAC auth header
+- **T23** Outbound net whitelist
+- **T24** GDPR retention policy
+
+## 4  Timeline (6 weeks)
+Week 1 – Render skeleton  
+Week 2 – CSV tool  
+Week 3 – PDF tool  
+Week 4 – planning + /ask  
+Week 5 – UI integration  
+Week 6 – perf, security
+
+## 5  Success Criteria
+1. Answers correct on sample CSV > 95 %.
+2. P95 latency ≤ 20 s.
+3. Trace visible to users.
+4. 99 % uptime.
+5. All secrets secured.
