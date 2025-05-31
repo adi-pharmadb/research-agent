@@ -1,4 +1,5 @@
 fastapi
 uvicorn[standard]
 redis
+prometheus-fastapi-instrumentator
 # Add other direct dependencies for your FastAPI app here as needed 
