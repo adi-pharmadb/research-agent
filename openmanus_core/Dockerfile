@@ -31,11 +31,11 @@ COPY ./main.py .
 
 # Environment variable for the port, defaulting to 8000 if not set.
 # Render will set this based on render.yaml.
-ENV PORT 8000
+ENV PORT=8000
 
 # Expose the port the app runs on
 EXPOSE ${PORT}
 
 # Command to run the FastAPI application using Uvicorn
 # This assumes your FastAPI app instance is named 'app' in 'main.py'
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
