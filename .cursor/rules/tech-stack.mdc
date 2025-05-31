@@ -1,0 +1,16 @@
+---
+description: This is the project's tech stack
+globs: 
+alwaysApply: false
+---
+# Tech Stack
+- *Next.js 14 (App Router)*: Use for creating all web pages and handling routing between the landing, auth, and app interfaces; enables both client and server components.
+- *Tailwind CSS*: Apply to style all UI elements across the application; particularly useful for responsive layouts like the 3-column app design.
+- *shadcn/ui*: Implement for pre-styled components like buttons, forms, and cards; use for the chat interface and auth screens to maintain consistent styling.
+- *Supabase*: Utilize for user authentication via email magic links, storing chat data in PostgreSQL tables, and hosting uploaded document files.
+- *Perplexity Sonar-Reasoning-Pro API*: Call when processing user questions to generate AI responses with relevant citations and references.
+- *Vercel*: Deploy the application for production use; configure with environment variables for API keys and manage the custom domain.
+- *html/js*: for frontend
+- Separate databases for dev, test, and prod
+
+

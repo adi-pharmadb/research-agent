@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_271ec17c74636b25b7cca7e2e330fef1b298081a"
+      ]
+    },
+    "flowise": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/matthewhand/mcp-flowise",
+        "mcp-flowise"
+      ],
+      "env": {
+        "FLOWISE_API_KEY": "${FLOWISE_API_KEY}",
+        "FLOWISE_API_ENDPOINT": "https://cloud.flowiseai.com",
+        "FLOWISE_SIMPLE_MODE": "false"
+      }
+    }
+  }
+} 

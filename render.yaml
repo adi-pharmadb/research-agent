@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: pharmadb-research-agent
+    env: docker
+    plan: free # Or your preferred plan, e.g., starter
+    dockerfilePath: ./openmanus_core/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false # Keep value in Render dashboard
+      - key: BING_KEY
+        sync: false # Keep value in Render dashboard
+      - key: REDIS_URL
+        fromService: # If using a Render Redis instance
+          type: redis
+          name: pharmadb-redis # Replace with your Render Redis service name
+        # Alternatively, if REDIS_URL is manually set:
+        # value: your-redis-connection-string
+        # sync: false 
+      - key: PYTHON_VERSION
+        value: "3.12" # Matches Dockerfile
+      - key: PORT
+        value: "8000" # Port your FastAPI app will listen on
+      # Add other necessary environment variables here
+    autoDeploy: true # Optional: automatically deploy on push to main branch
+    healthCheckPath: /healthz # T12: Add health check path
+    # Optional: Define build instance type if needed
+    # buildInstanceType: standard 
+    # Optional: Define instance count
+    # numInstances: 1
+
+# Example Redis instance (if you create one on Render)
+# - type: redis
+#   name: pharmadb-redis
+#   plan: free # Or your preferred plan
+#   ipAllowList: [] # Configure as needed
+#   maxmemoryPolicy: allkeys-lru 

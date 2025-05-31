@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+redis
+# Add other direct dependencies for your FastAPI app here as needed 
