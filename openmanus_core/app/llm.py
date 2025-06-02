@@ -3,12 +3,12 @@ from typing import Dict, List, Optional, Union
 
 import tiktoken
 from openai import (
-    APIError,
+    APIError as OpenAIAPIError,
     AsyncAzureOpenAI,
     AsyncOpenAI,
-    AuthenticationError,
+    AuthenticationError as OpenAIAuthenticationError,
     OpenAIError,
-    RateLimitError,
+    RateLimitError as OpenAIRateLimitError,
 )
 from openai.types.chat import ChatCompletion, ChatCompletionMessage as OpenAIChatCompletionMessage
 from anthropic import AsyncAnthropic, AnthropicError
@@ -475,10 +475,12 @@ class LLM:
         except TokenLimitExceeded: raise
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask method: {e}")
-            if isinstance(e, (AuthenticationError, anthropic.AuthenticationError)):
+            if isinstance(e, (OpenAIAuthenticationError, AnthropicAuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
-            elif isinstance(e, (RateLimitError, anthropic.RateLimitError)):
+            elif isinstance(e, (OpenAIRateLimitError, AnthropicRateLimitError)):
                 logger.error("Rate limit exceeded.")
+            elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
+                 logger.error(f"Generic API error: {e}")
             raise
         except Exception: logger.exception(f"Unexpected error in ask"); raise
 
@@ -788,9 +790,11 @@ class LLM:
         except TokenLimitExceeded: raise
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask_tool method: {e}")
-            if isinstance(e, (AuthenticationError, anthropic.AuthenticationError)):
+            if isinstance(e, (OpenAIAuthenticationError, AnthropicAuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
-            elif isinstance(e, (RateLimitError, anthropic.RateLimitError)):
+            elif isinstance(e, (OpenAIRateLimitError, AnthropicRateLimitError)):
                 logger.error("Rate limit exceeded.")
+            elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
+                 logger.error(f"Generic API error: {e}")
             raise
         except Exception: logger.exception(f"Unexpected error in ask_tool"); raise
