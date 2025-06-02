@@ -1,5 +1,5 @@
 SUMMARY (TL;DR)
-We’re building a self-hosted micro-service (OpenManus on Render) that receives a user’s question and file URLs from the PharmaDB web app, autonomously decides which tool to run (DuckDB for CSVs, vector‑store search for PDFs, optional web search), streams its chain‑of‑thought, and returns a single, citation‑rich answer for display in the PharmaDB chat UI.
+We're building a self-hosted micro-service (OpenManus on Render) that receives a user's question and file URLs from the PharmaDB web app, autonomously decides which tool to run (DuckDB for CSVs, vector‑store search for PDFs, optional web search), streams its chain‑of‑thought, and returns a single, citation‑rich answer for display in the PharmaDB chat UI.
 
 OpenManus repo (active fork): https://github.com/FoundationAgents/OpenManus
 
@@ -11,13 +11,13 @@ OpenManus repo (active fork): https://github.com/FoundationAgents/OpenManus
 | Layer              | Technology                              |
 |--------------------|-----------------------------------------|
 | Frontend           | Existing PharmaDB Next.js (Vercel)      |
-| Agent Micro‑service| OpenManus (Python 3.12)                 |
-| LLM provider       | OpenAI GPT‑4o (fallback Claude 3)       |
-| Tabular queries    | DuckDB Python package                   |
-| PDF retrieval      | PyMuPDF + ChromaDB (in‑memory)          |
-| Web search         | Bing Search v7 API                      |
-| In‑memory cache    | Redis (Render)                          |
-| Deployment         | Render Web Service (Docker)             |
+| Agent Micro‑service| OpenManus (Python 3.12)                 |
+| LLM provider       | OpenAI GPT‑4o (fallback Claude 3)       |
+| Tabular queries    | DuckDB Python package                   |
+| PDF retrieval      | PyMuPDF + ChromaDB (in‑memory)          |
+| Web search         | Bing Search v7 API                      |
+| In‑memory cache    | Redis (Render)                          |
+| Deployment         | Render Web Service (Docker)             |
 
 ## 2  User Journey (happy path)
 1. User types a question and selects CSV/PDF URLs.
@@ -27,66 +27,49 @@ OpenManus repo (active fork): https://github.com/FoundationAgents/OpenManus
 5. Thought/action events stream back; UI shows live trace.
 6. Final JSON (`answer`, `citations`, `trace`) rendered in chat.
 
-## 3  Task Breakdown
-### 3.1 Repo & Deployment
-- **T1** Create repo `pharmadb-openmanus`
-  • init Poetry / requirements.txt
-- **T2** Render blueprint `render.yaml`
-  • env vars: OPENAI_API_KEY, BING_KEY
-- **T3** Dockerfile (python:3.12‑slim)
-  • install PyMuPDF libs
-  • expose PORT
+## 3  Technical Implementation Tasks
 
-### 3.2 OpenManus Setup
-- **T4** Clone OpenManus source
-- **T5** `main.py` FastAPI: initialise Manus agent, Redis
+### 3.1  Render & Service Setup (Week 1 Focus)
 
-### 3.3 Custom Tools
-- **T6** CSVQueryTool (DuckDB) …
-- **T7** PDFSearchTool (PyMuPDF + Chroma) …
-- **T8** WebSearchTool (Bing API) …
+- [x] T1: Create a new private GitHub repository `adi-pharmadb/pharma-research-agent` and set up the local workspace. (DONE)
+- [x] T2: Create `render.yaml` file in the root directory for deploying the FastAPI service to Render. Ensure it specifies Docker deployment, environment variables (like `OPENAI_API_KEY`, `BING_KEY`, `REDIS_URL` - mark as sync: false), Python version, and necessary build/start commands.
+- [x] T3: Create a `Dockerfile` in the `openmanus_core` directory. This Dockerfile should: Use an appropriate Python base image (e.g., `python:3.12-slim`). Install system dependencies if any are needed by OpenManus tools (e.g., for `fitz` if PDF processing is used). Copy `openmanus_core/requirements.txt` and the new root `requirements.txt`. Install dependencies from both `requirements.txt` files. Copy the necessary application code (both `openmanus_core` and the new root-level files like `main.py`). Set appropriate `WORKDIR`, `EXPOSE` port (matching `render.yaml`), and `CMD` to run the FastAPI app using Uvicorn.
+- [x] T4: All files and folders from the original OpenManus repository should be moved into a subdirectory named `openmanus_core`. This is to keep the root directory clean for the new FastAPI service files and Render configuration.
+- [x] T5: Create `main.py` at the root level. This will be the entry point for the FastAPI service. Initialize a basic FastAPI app. Include a root `requirements.txt` for FastAPI, Uvicorn, and any other direct dependencies of the new service (e.g., `redis` client library).
 
-### 3.4 Agent Prompt & Planning
-- **T9** System prompt lists tool schemas
-- **T10** Enable streaming thoughts
+### 3.2  FastAPI Application Logic (Core Agent Functionality)
 
-### 3.5 API Layer
-- **T11** POST /ask route (+SSE)
-- **T12** /healthz, /metrics
+- [ ] T6: Implement agent initialization in `main.py` within an `app.on_event("startup")` handler. This should include initializing the ManusAgent from `openmanus_core.app.agent.manus`.
+- [ ] T7: Implement CSVQueryTool (DuckDB) …
+- [ ] T8: Integrate Redis in `main.py` (startup event). Get `REDIS_URL` from environment variables (default to a local Redis for dev if not set). Initialize a Redis client and make it available globally or via app state. Implement a basic ping or connection check.
+- [x] T9: Implement a `/healthz` endpoint in `main.py` that returns a simple JSON response (e.g., `{"status": "ok"}`) for health checks by Render.
+- [ ] T10: Create a new Python module (e.g., `research_agent_logic.py` or a new package `pharma_agent`) for the core business logic of the research agent. This will house the functions/classes that interact with OpenManus tools based on the research task.
+- [ ] T11: Implement PDFSearchTool (PyMuPDF + Chroma) …
+- [ ] T12: Implement WebSearchTool (Bing API) …
+- [ ] T13: Implement a POST /ask route (+SSE)
+- [ ] T14: Implement a Trace panel UI
+- [ ] T15: Implement chat history in Redis, token trim
+- [ ] T16: Implement file-index cache in Redis
+- [ ] T17: Implement unit tests per tool
+- [ ] T18: Implement end‑to‑end mock CSV & PDF
+- [ ] T19: Implement load test (k6)
+- [ ] T20: Implement OpenTelemetry to logs
+- [ ] T21: Implement Render uptime check
+- [ ] T22: Implement HMAC auth header
+- [ ] T23: Implement outbound net whitelist
+- [ ] T24: Implement GDPR retention policy
 
-### 3.6 Frontend Integration
-- **T13** callAgent() util (SSE)
-- **T14** Trace panel UI
-
-### 3.7 Persistence & Limits
-- **T15** Chat history in Redis, token trim
-- **T16** File-index cache in Redis
-
-### 3.8 Testing
-- **T17** Unit tests per tool
-- **T18** End‑to‑end mock CSV & PDF
-- **T19** Load test (k6)
-
-### 3.9 Observability
-- **T20** OpenTelemetry to logs
-- **T21** Render uptime check
-
-### 3.10 Security
-- **T22** HMAC auth header
-- **T23** Outbound net whitelist
-- **T24** GDPR retention policy
-
-## 4  Timeline (6 weeks)
-Week 1 – Render skeleton  
-Week 2 – CSV tool  
-Week 3 – PDF tool  
-Week 4 – planning + /ask  
-Week 5 – UI integration  
-Week 6 – perf, security
+## 4  Timeline (6 weeks)
+Week 1 – Render skeleton  
+Week 2 – CSV tool  
+Week 3 – PDF tool  
+Week 4 – planning + /ask  
+Week 5 – UI integration  
+Week 6 – perf, security
 
 ## 5  Success Criteria
-1. Answers correct on sample CSV > 95 %.
-2. P95 latency ≤ 20 s.
+1. Answers correct on sample CSV > 95 %.
+2. P95 latency ≤ 20 s.
 3. Trace visible to users.
-4. 99 % uptime.
+4. 99 % uptime.
 5. All secrets secured.

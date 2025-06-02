@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Request, Security, Depends
+from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from typing import List, Dict, Any, Optional, Union
 import uvicorn
 import os
@@ -11,12 +11,15 @@ import asyncio # For SSE
 import logging
 import sys # For logging to stdout
 from prometheus_fastapi_instrumentator import Instrumentator
+import uuid # For generating task IDs
+from datetime import datetime, timezone # Added timezone
+from contextlib import asynccontextmanager # For lifespan
 
 # Import necessary Manus agent components from openmanus_core
-from openmanus_core.app.agent.manus import ManusAgent # Example
-from openmanus_core.app.config import load_config # Example
+from openmanus_core.app.agent.manus import Manus as ResearchAgent # Renamed and using Manus directly
+from openmanus_core.app.config import config # Correct way to access config
 
-# Import the agent service
+# Import the agent service (we'll call this within a background task)
 from pharma_agent.agent_service import process_research_request
 
 # --- Logger Setup ---
@@ -51,10 +54,61 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 # --- End Logger Setup ---
 
+# Global variables to hold the initialized components
+research_agent_instance = None
+redis_client = None
+
+# --- Lifespan Event Handler ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    global research_agent_instance, redis_client
+    logger.info("Starting application setup (lifespan)...")
+
+    try:
+        research_agent_instance = await ResearchAgent.create()
+        logger.info("ResearchAgent initialized successfully (lifespan).")
+    except Exception as e:
+        logger.error(f"Could not initialize ResearchAgent (lifespan): {e}", exc_info=True)
+        research_agent_instance = None
+
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    try:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        redis_client.ping()
+        logger.info(f"Connected to Redis at {redis_url} (lifespan)")
+    except redis.exceptions.ConnectionError as e:
+        logger.error(f"Could not connect to Redis at {redis_url} (lifespan): {e}", exc_info=True)
+        redis_client = None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during Redis initialization (lifespan): {e}", exc_info=True)
+        redis_client = None
+    
+    logger.info("Application setup finished (lifespan).")
+    
+    yield # Application runs here
+    
+    # Shutdown logic (if any)
+    logger.info("Application shutting down (lifespan)...")
+    if hasattr(research_agent_instance, 'cleanup') and asyncio.iscoroutinefunction(research_agent_instance.cleanup):
+        try:
+            await research_agent_instance.cleanup()
+            logger.info("ResearchAgent cleaned up successfully (lifespan).")
+        except Exception as e:
+            logger.error(f"Error during ResearchAgent cleanup (lifespan): {e}", exc_info=True)
+    if redis_client:
+        try:
+            redis_client.close()
+            logger.info("Redis client closed (lifespan).")
+        except Exception as e:
+            logger.error(f"Error closing Redis client (lifespan): {e}", exc_info=True)
+    logger.info("Application shutdown complete (lifespan).")
+
 app = FastAPI(
     title="PharmaDB Research Agent",
     description="An AI agent for deep research in PharmaDB using OpenManus.",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan # Register lifespan handler
 )
 
 # --- Prometheus Metrics Setup ---
@@ -62,7 +116,7 @@ Instrumentator().instrument(app).expose(app, include_in_schema=True, endpoint="/
 # --- End Prometheus Metrics Setup ---
 
 # --- API Key Authentication --- 
-API_KEY = os.getenv("RESEARCH_AGENT_API_KEY", "your_default_secret_api_key") # TODO: Change default in prod
+API_KEY = os.getenv("RESEARCH_AGENT_API_KEY", "your_default_secret_api_key")
 API_KEY_NAME = "X-API-Key"
 api_key_header_auth = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 
@@ -76,31 +130,48 @@ async def get_api_key(api_key_header: str = Security(api_key_header_auth)):
         )
 # --- End API Key Authentication ---
 
-# --- Pydantic Models for /ask endpoint ---
-class FileReference(BaseModel):
-    url: HttpUrl
-    # Potentially add other metadata like file_type, size, etc.
+# --- Pydantic Models for Agent Interaction ---
+class ResearchQueryRequest(BaseModel):
+    query: str = Field(..., description="The research question or task for the agent.")
+    # file_refs: Optional[List[FileReference]] = Field(default_factory=list, description="Optional list of file references for context.")
+    # history: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Optional conversation history.")
+    # conversation_id: Optional[str] = None # We'll use task_id for tracking
 
-class AskRequest(BaseModel):
-    conversation_id: Optional[str] = None
-    question: str
-    file_refs: Optional[List[FileReference]] = []
-    history: Optional[List[Dict[str, Any]]] = [] # Each dict could be a previous Q/A turn
+class TaskCreationResponse(BaseModel):
+    task_id: str
+    status: str = "pending"
+    detail: str = "Task accepted and queued for processing."
 
-class Citation(BaseModel):
-    source: str # e.g., filename, URL
-    text: str   # Relevant snippet
+class TaskStatus(BaseModel):
+    status: str
+    timestamp: str
+    result: Optional[Any] = None
+    error: Optional[str] = None
 
-class AskResponse(BaseModel):
-    answer: str
-    citations: List[Citation]
-    trace: Dict[str, Any]
-    conversation_id: Optional[str] = None
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    task_status: TaskStatus
 
-# Global variables to hold the initialized components
-config = None
-manus_agent = None
-redis_client = None
+# Remove old models if they are fully replaced or adapt them
+# class FileReference(BaseModel):
+#     url: HttpUrl
+#     # Potentially add other metadata like file_type, size, etc.
+
+# class Citation(BaseModel):
+#     source: str # e.g., filename, URL
+#     text: str   # Relevant snippet
+
+# class AskResponse(BaseModel): # This will be effectively replaced by the result in TaskStatus
+#     answer: str
+#     citations: List[Citation]
+#     trace: Dict[str, Any]
+#     conversation_id: Optional[str] = None
+
+
+# In-memory store for task status and results
+# For production, use Redis or a database
+task_store: Dict[str, TaskStatus] = {}
+
 
 # --- Global Exception Handler ---
 @app.exception_handler(Exception)
@@ -112,59 +183,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 # --- End Global Exception Handler ---
 
-@app.on_event("startup")
-async def startup_event():
-    """Handles application startup tasks."""
-    global manus_agent, config, redis_client
-
-    logger.info("Starting application setup...")
-
-    # Load configuration (e.g., from openmanus_core/config/config.toml)
-    config_path = os.getenv("CONFIG_PATH", os.path.join("openmanus_core", "config", "config.toml"))
-    try:
-        config = load_config(config_path)
-        logger.info(f"Configuration loaded successfully from {config_path}")
-    except FileNotFoundError:
-        logger.error(f"Configuration file not found at {config_path}. Trying config.example.toml...")
-        config_path = os.path.join("openmanus_core", "config", "config.example.toml")
-        try:
-            config = load_config(config_path)
-            logger.info(f"Successfully loaded example configuration from {config_path}")
-        except Exception as e:
-            logger.error(f"Could not load any configuration: {e}", exc_info=True)
-            # Potentially raise an error here or exit if config is critical
-            config = None # Ensure config is None if loading fails
-    except Exception as e:
-        logger.error(f"Could not load configuration from {config_path}: {e}", exc_info=True)
-        config = None
-
-    # Initialize Manus Agent
-    if config:
-        try:
-            # Ensure all necessary LLM API keys and other configs are available in the environment or config file
-            manus_agent = ManusAgent(config)
-            logger.info("ManusAgent initialized successfully.")
-        except Exception as e:
-            logger.error(f"Could not initialize ManusAgent: {e}", exc_info=True)
-            manus_agent = None # Ensure agent is None if init fails
-    else:
-        logger.info("ManusAgent initialization skipped due to missing configuration.")
-        manus_agent = None
-
-    # Initialize Redis client
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    try:
-        redis_client = redis.from_url(redis_url, decode_responses=True)
-        redis_client.ping() # Check connection
-        logger.info(f"Connected to Redis at {redis_url}")
-    except redis.exceptions.ConnectionError as e:
-        logger.error(f"Could not connect to Redis at {redis_url}: {e}", exc_info=True)
-        redis_client = None # Ensure it's None if connection failed
-    except Exception as e: # Catch any other potential errors from redis.from_url
-        logger.error(f"An unexpected error occurred during Redis initialization: {e}", exc_info=True)
-        redis_client = None
-    
-    logger.info("Application setup finished.")
+# @app.on_event("startup") # This is now handled by lifespan
+# async def startup_event():
+#     """Handles application startup tasks."""
+#     pass # Logic moved to lifespan
 
 @app.get("/healthz", summary="Health Check")
 async def health_check():
@@ -172,50 +194,149 @@ async def health_check():
     # TODO: Add more sophisticated health checks (e.g., check LLM connectivity, Redis)
     return {"status": "ok"}
 
-# Define /ask endpoint (T11)
-@app.post("/ask", response_model=AskResponse, summary="Ask the Research Agent")
-async def ask_agent(request: AskRequest, api_key: str = Depends(get_api_key)):
-    """Receives a research question, file references, and conversation history, then returns an answer."""
-    logger.info(f"Received /ask request with question: {request.question[:50]}...")
-    if not manus_agent:
-        logger.error("ManusAgent not initialized. Returning 503.")
-        raise HTTPException(status_code=503, detail="ManusAgent not initialized. Check server logs.")
-    
-    # For now, directly call the placeholder. Later, this will involve SSE.
-    response_data = await process_research_request(
-        question=request.question,
-        file_refs=request.file_refs,
-        history=request.history,
-        agent=manus_agent,
-        redis_client=redis_client
+# --- Background Task for Agent Processing ---
+async def run_research_task(task_id: str, query: str):
+    """Runs the research agent task in the background and updates the task_store."""
+    logger.info(f"Task {task_id}: Starting research for query: {query[:50]}...")
+    task_store[task_id] = TaskStatus(
+        status="in_progress", 
+        timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
+        result=None,
+        error=None
     )
-    response_data["conversation_id"] = request.conversation_id
-    return AskResponse(**response_data)
 
-# Placeholder for SSE streaming version of /ask
+    if not research_agent_instance:
+        error_msg = "ResearchAgent not initialized. Cannot process task."
+        logger.error(f"Task {task_id}: {error_msg}")
+        task_store[task_id] = TaskStatus(
+            status="failed", 
+            timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
+            result=None, 
+            error=error_msg
+        )
+        return
+
+    try:
+        # Here, we directly use the agent's run method.
+        # This assumes agent.run() is an async method and takes the query as input.
+        # The output of agent.run() will be stored as the result.
+        # You might need to adapt this based on the actual signature and 
+        # return type of your ResearchAgent's primary execution method.
+        # For Manus, it's usually an `async_run` or `run` method that takes a list of messages or a string.
+        
+        # Example: agent_result = await research_agent_instance.async_run(prompt=query)
+        # For Manus, the `run` method might expect a list of messages
+        # For simplicity, let's assume a simplified interaction or adapt if needed
+        # based on how `process_research_request` was using the agent.
+        
+        # If process_research_request was a simple wrapper around agent.run, we can replicate its core logic.
+        # Let's assume research_agent_instance.run() is the method to call and it's synchronous.
+        # To make it async compatible for background task, we can run it in a thread pool if it's blocking.
+        # However, Manus agent's run method is often async.
+        
+        # Assuming agent expects a list of messages, like: `[{"role": "user", "content": query}]`
+        # The actual structure might differ for OpenManus.
+        # For the demo, Manus takes a string prompt.
+        agent_response = await research_agent_instance.run(query) 
+
+        logger.info(f"Task {task_id}: Research completed. Result: {str(agent_response)[:100]}...")
+        task_store[task_id] = TaskStatus(
+            status="completed", 
+            timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
+            result=agent_response, # Store the raw agent response
+            error=None
+        )
+    except Exception as e:
+        error_msg = f"Error during research task: {e}"
+        logger.error(f"Task {task_id}: {error_msg}", exc_info=True)
+        task_store[task_id] = TaskStatus(
+            status="failed", 
+            timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
+            result=None, 
+            error=error_msg
+        )
+# --- End Background Task ---
+
+# New Agent Invocation Endpoint
+@app.post("/agent/invoke", response_model=TaskCreationResponse, summary="Invoke the Research Agent Task")
+async def invoke_agent_task(
+    request: ResearchQueryRequest, 
+    background_tasks: BackgroundTasks, 
+    api_key: str = Depends(get_api_key)
+):
+    """Accepts a research query, starts a background task for the agent, and returns a task ID."""
+    logger.info(f"Received /agent/invoke request with query: {request.query[:50]}...")
+    
+    if not research_agent_instance:
+        logger.error("ResearchAgent not initialized. Returning 503.")
+        raise HTTPException(status_code=503, detail="ResearchAgent not initialized. Check server logs.")
+
+    task_id = str(uuid.uuid4())
+    task_store[task_id] = TaskStatus(
+        status="pending", 
+        timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
+        result=None,
+        error=None
+    )
+    
+    background_tasks.add_task(run_research_task, task_id, request.query)
+    
+    logger.info(f"Task {task_id} created and queued for query: {request.query[:50]}...")
+    return TaskCreationResponse(task_id=task_id)
+
+# New Task Status Endpoint
+@app.get("/agent/tasks/{task_id}/status", response_model=TaskStatusResponse, summary="Get Research Agent Task Status")
+async def get_agent_task_status(task_id: str, api_key: str = Depends(get_api_key)):
+    """Retrieves the status and result (if available) of a previously submitted agent task."""
+    logger.info(f"Received status request for task ID: {task_id}")
+    task_info = task_store.get(task_id)
+    if not task_info:
+        logger.warning(f"Task ID {task_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Task ID {task_id} not found")
+    
+    return TaskStatusResponse(task_id=task_id, task_status=task_info)
+
+
+# Remove the old /ask endpoint as it's replaced by /agent/invoke and /agent/tasks/... 
+# @app.post("/ask", response_model=AskResponse, summary="Ask the Research Agent")
+# async def ask_agent(request: AskRequest, api_key: str = Depends(get_api_key)):
+#     """Receives a research question, file references, and conversation history, then returns an answer."""
+#     logger.info(f"Received /ask request with question: {request.question[:50]}...")
+#     if not research_agent_instance: # Check renamed instance
+#         logger.error("ResearchAgent not initialized. Returning 503.")
+#         raise HTTPException(status_code=503, detail="ResearchAgent not initialized. Check server logs.")
+#     
+#     # For now, directly call the placeholder. Later, this will involve SSE.
+#     response_data = await process_research_request(
+#         question=request.question,
+#         # file_refs=request.file_refs, # Assuming these might not be used directly by ResearchAgent or handled by process_research_request
+#         # history=request.history,
+#         agent=research_agent_instance, # Pass renamed instance
+#         redis_client=redis_client
+#     )
+#     # The structure of response_data from process_research_request needs to align with AskResponse
+#     # This endpoint will be replaced by the new /agent/invoke and /agent/tasks/... structure
+#     
+#     # Temporary adaptation to old AskResponse if process_research_request returns a simple string or dict
+#     if isinstance(response_data, str):
+#         ask_response_data = {"answer": response_data, "citations": [], "trace": {}}
+#     elif isinstance(response_data, dict) and "answer" in response_data:
+#         ask_response_data = response_data
+#     else: # Fallback if the structure is unexpected
+#         ask_response_data = {"answer": "Processed, but response format is unexpected.", "citations": [], "trace": {}}
+# 
+#     ask_response_data["conversation_id"] = request.conversation_id
+#     return AskResponse(**ask_response_data)
+
+# Placeholder for SSE streaming version of /ask (can be adapted for tasks later if needed)
 # @app.post("/ask-stream", dependencies=[Depends(get_api_key)])
 # async def ask_agent_stream(request: AskRequest):
-#     if not manus_agent:
-#         raise HTTPException(status_code=503, detail="ManusAgent not initialized. Check server logs.")
+#     if not research_agent_instance: # Check renamed instance
+#         raise HTTPException(status_code=503, detail="ResearchAgent not initialized. Check server logs.")
 
-#     async def event_generator():
-#         # Mock streaming data for now
-#         yield f"data: {json.dumps({'type': 'thought', 'content': 'Starting research...'})}\n\n"
-#         await asyncio.sleep(1)
-#         yield f"data: {json.dumps({'type': 'action', 'tool': 'some_tool', 'input': 'some_input'})}\n\n"
-#         await asyncio.sleep(1)
-#         # ... call actual agent logic that yields events ...
-#         final_result = await process_research_request(
-#             question=request.question, file_refs=request.file_refs, history=request.history,
-#             agent=manus_agent, redis_client=redis_client
-#         )
-#         final_result["conversation_id"] = request.conversation_id
-#         yield f"data: {json.dumps({'type': 'result', 'data': final_result})}\n\n"
 
-#     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-# TODO: Define /metrics endpoint (T12) if needed
-
+# TODO: Define /metrics endpoint (T12) if needed -- This is already present from previous steps
+# Ensure uvicorn command is present for running the app, if it was removed.
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run(app, host="0.0.0.0", port=port) 

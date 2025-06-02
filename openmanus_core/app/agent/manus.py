@@ -2,17 +2,18 @@ from typing import Dict, List, Optional
 
 from pydantic import Field, model_validator
 
-from app.agent.browser import BrowserContextHelper
-from app.agent.toolcall import ToolCallAgent
-from app.config import config
-from app.logger import logger
-from app.prompt.manus import NEXT_STEP_PROMPT, SYSTEM_PROMPT
-from app.tool import Terminate, ToolCollection
-from app.tool.ask_human import AskHuman
-from app.tool.browser_use_tool import BrowserUseTool
-from app.tool.mcp import MCPClients, MCPClientTool
-from app.tool.python_execute import PythonExecute
-from app.tool.str_replace_editor import StrReplaceEditor
+from .browser import BrowserContextHelper
+from .toolcall import ToolCallAgent
+from ..config import config
+from ..logger import logger
+from ..prompt.manus import NEXT_STEP_PROMPT, SYSTEM_PROMPT
+from ..tool import Terminate, ToolCollection
+from ..tool.ask_human import AskHuman
+from ..tool.browser_use_tool import BrowserUseTool
+from ..tool.mcp import MCPClients, MCPClientTool
+from ..tool.python_execute import PythonExecute
+from ..tool.str_replace_editor import StrReplaceEditor
+from ..tool.pdf_search_tool import PDFSearchTool
 
 
 class Manus(ToolCallAgent):
@@ -36,6 +37,7 @@ class Manus(ToolCallAgent):
             PythonExecute(),
             BrowserUseTool(),
             StrReplaceEditor(),
+            PDFSearchTool(),
             AskHuman(),
             Terminate(),
         )

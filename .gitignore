@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Application Secrets / Configs
+# Ensure your actual config.toml (with API keys) is never committed
+openmanus_core/config/config.toml
+
+# ChromaDB persistent storage
+openmanus_core/workspace/.chromadb_store/
+workspace_test_pdf/.chromadb_store/
+w*_test_pdf/
+
+# Test files / outputs
+openmanus_core/workspace/sample_data.csv
+openmanus_core/workspace/sample_doc.pdf 

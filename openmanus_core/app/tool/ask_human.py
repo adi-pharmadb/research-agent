@@ -1,21 +1,26 @@
-from app.tool import BaseTool
+from .base import BaseTool
+
+
+_ASK_HUMAN_DESCRIPTION = """Asks the user for input and returns their response."""
 
 
 class AskHuman(BaseTool):
     """Add a tool to ask human for help."""
 
     name: str = "ask_human"
-    description: str = "Use this tool to ask human for help."
-    parameters: str = {
+    description: str = _ASK_HUMAN_DESCRIPTION
+    parameters: dict = {
         "type": "object",
         "properties": {
-            "inquire": {
+            "question": {
                 "type": "string",
-                "description": "The question you want to ask human.",
-            }
+                "description": "The question to ask the user.",
+            },
         },
-        "required": ["inquire"],
+        "required": ["question"],
     }
 
-    async def execute(self, inquire: str) -> str:
-        return input(f"""Bot: {inquire}\n\nYou: """).strip()
+    async def execute(self, question: str) -> str:
+        """Ask the user a question and return their response."""
+        response = input(f"\n{question}\nYour response: ")
+        return response

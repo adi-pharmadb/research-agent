@@ -3,16 +3,16 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field, model_validator
 
-from app.agent.toolcall import ToolCallAgent
-from app.logger import logger
-from app.prompt.browser import NEXT_STEP_PROMPT, SYSTEM_PROMPT
-from app.schema import Message, ToolChoice
-from app.tool import BrowserUseTool, Terminate, ToolCollection
+from .toolcall import ToolCallAgent
+from ..logger import logger
+from ..prompt.browser import NEXT_STEP_PROMPT, SYSTEM_PROMPT
+from ..schema import Message, ToolChoice
+from ..tool import BrowserUseTool, Terminate, ToolCollection
 
 
 # Avoid circular import if BrowserAgent needs BrowserContextHelper
 if TYPE_CHECKING:
-    from app.agent.base import BaseAgent  # Or wherever memory is defined
+    from .base import BaseAgent  # Changed
 
 
 class BrowserContextHelper:

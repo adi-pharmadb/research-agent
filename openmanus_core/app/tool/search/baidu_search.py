@@ -2,7 +2,7 @@ from typing import List
 
 from baidusearch.baidusearch import search
 
-from app.tool.search.base import SearchItem, WebSearchEngine
+from .base import SearchItem, WebSearchEngine
 
 
 class BaiduSearchEngine(WebSearchEngine):

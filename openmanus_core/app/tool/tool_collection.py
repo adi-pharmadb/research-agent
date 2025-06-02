@@ -1,9 +1,9 @@
 """Collection classes for managing multiple tools."""
 from typing import Any, Dict, List
 
-from app.exceptions import ToolError
-from app.logger import logger
-from app.tool.base import BaseTool, ToolFailure, ToolResult
+from ..exceptions import ToolError
+from ..logger import logger
+from .base import BaseTool, ToolFailure, ToolResult
 
 
 class ToolCollection:

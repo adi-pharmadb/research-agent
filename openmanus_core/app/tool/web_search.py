@@ -6,17 +6,17 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.config import config
-from app.logger import logger
-from app.tool.base import BaseTool, ToolResult
-from app.tool.search import (
+from ..config import config
+from ..logger import logger
+from .base import BaseTool, ToolResult
+from .search import (
     BaiduSearchEngine,
     BingSearchEngine,
     DuckDuckGoSearchEngine,
     GoogleSearchEngine,
     WebSearchEngine,
 )
-from app.tool.search.base import SearchItem
+from .search.base import SearchItem
 
 
 class SearchResult(BaseModel):

@@ -2,7 +2,7 @@ from typing import List
 
 from duckduckgo_search import DDGS
 
-from app.tool.search.base import SearchItem, WebSearchEngine
+from .base import SearchItem, WebSearchEngine
 
 
 class DuckDuckGoSearchEngine(WebSearchEngine):

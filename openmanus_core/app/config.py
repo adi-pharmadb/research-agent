@@ -20,6 +20,7 @@ class LLMSettings(BaseModel):
     model: str = Field(..., description="Model name")
     base_url: str = Field(..., description="API base URL")
     api_key: str = Field(..., description="API key")
+    embedding_model: Optional[str] = Field(None, description="Optional: Specific embedding model name, e.g., for OpenAI text-embedding-ada-002")
     max_tokens: int = Field(4096, description="Maximum number of tokens per request")
     max_input_tokens: Optional[int] = Field(
         None,
