@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import os
 
 from pydantic import BaseModel, Field
-from ..logger import logger
+from .logger import logger
 
 
 def get_project_root() -> Path:
