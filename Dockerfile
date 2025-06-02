@@ -40,5 +40,5 @@ EXPOSE ${PORT}
 
 # Command to run the FastAPI application using Uvicorn
 # This assumes your FastAPI app instance is named 'app' in 'main.py'
-# Uvicorn will use the PORT environment variable.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT}"] 
+# Uvicorn will use the PORT environment variable. Shell form CMD for variable expansion.
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} 
