@@ -475,12 +475,14 @@ class LLM:
         except TokenLimitExceeded: raise
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask method: {e}")
+            logger.info("DEBUG: ask - In except (ValueError, AnthropicError, OpenAIError)") # DEBUG LOG
             if isinstance(e, (OpenAIAuthenticationError, AnthropicAuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
             elif isinstance(e, (OpenAIRateLimitError, AnthropicRateLimitError)):
                 logger.error("Rate limit exceeded.")
             elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
                  logger.error(f"Generic API error: {e}")
+                 logger.info(f"DEBUG: ask - Caught APIError type: {type(e)}") # DEBUG LOG
             raise
         except Exception: logger.exception(f"Unexpected error in ask"); raise
 
@@ -790,11 +792,13 @@ class LLM:
         except TokenLimitExceeded: raise
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask_tool method: {e}")
+            logger.info("DEBUG: ask_tool - In except (ValueError, AnthropicError, OpenAIError)") # DEBUG LOG
             if isinstance(e, (OpenAIAuthenticationError, AnthropicAuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
             elif isinstance(e, (OpenAIRateLimitError, AnthropicRateLimitError)):
                 logger.error("Rate limit exceeded.")
             elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
                  logger.error(f"Generic API error: {e}")
+                 logger.info(f"DEBUG: ask_tool - Caught APIError type: {type(e)}") # DEBUG LOG
             raise
         except Exception: logger.exception(f"Unexpected error in ask_tool"); raise
