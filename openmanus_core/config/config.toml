@@ -1,6 +1,6 @@
 # Global LLM configuration
 [llm]
-model = "claude-3-sonnet-20240229"       # Using a known common model name
+model = "claude-sonnet-4-20250514"       # Using a known common model name
 base_url = "https://api.anthropic.com/v1"
 api_key = "${ANTHROPIC_API_KEY}"          # To be set as an environment variable
 max_tokens = 8192
@@ -34,7 +34,7 @@ api_type = "anthropic"                   # Explicitly set api_type
 
 # Optional configuration for specific LLM models
 [llm.vision]
-model = "claude-3-sonnet-20240229"
+model = "claude-sonnet-4-20250514"
 base_url = "https://api.anthropic.com/v1"
 api_key = "${ANTHROPIC_API_KEY}"          # Re-use the same env var or use a specific one
 max_tokens = 8192
