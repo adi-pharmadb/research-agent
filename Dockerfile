@@ -28,8 +28,8 @@ COPY openmanus_core ./openmanus_core
 # Copy any other root-level Python files/directories your FastAPI app might have
 # For now, we'll assume main.py will be at the root
 COPY main.py .
-COPY pharma_agent ./pharma_agent # Added to copy the pharma_agent directory if it exists and is needed
-COPY tests ./tests # Added to copy tests directory if needed for some reason in image (unlikely for prod)
+COPY pharma_agent/ ./pharma_agent/
+COPY tests/ ./tests/
 
 # Environment variable for the port, defaulting to 8000 if not set.
 # Render will set this based on render.yaml.
