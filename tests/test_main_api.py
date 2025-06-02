@@ -11,7 +11,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Now we can import 'app' from 'main'
-from main import app, task_store, ResearchQueryRequest, API_KEY, API_KEY_NAME
+# Import memory_task_store specifically, and other needed items
+from main import app, memory_task_store, ResearchQueryRequest, API_KEY, API_KEY_NAME
 
 client = TestClient(app)
 
@@ -20,9 +21,12 @@ VALID_API_KEY = API_KEY
 INVALID_API_KEY = "invalid_test_key"
 
 @pytest.fixture(autouse=True)
-def clear_task_store():
-    """Clears the task_store before each test."""
-    task_store.clear()
+def ensure_in_memory_task_store(monkeypatch):
+    """Ensures that for testing, redis_client is None, so memory_task_store is used, and clears it."""
+    monkeypatch.setattr("main.redis_client", None) # Force usage of memory_task_store
+    memory_task_store.clear()
+    yield
+    memory_task_store.clear() # Clear again after test
 
 def test_health_check():
     response = client.get("/healthz")

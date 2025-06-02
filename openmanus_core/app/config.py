@@ -21,7 +21,7 @@ WORKSPACE_ROOT = PROJECT_ROOT / "workspace"
 class LLMSettings(BaseModel):
     model: str = Field(..., description="Model name")
     base_url: str = Field(..., description="API base URL")
-    api_key: str = Field(..., description="API key - can be an env var placeholder like ${ENV_VAR_NAME}")
+    api_key: Optional[str] = Field(None, description="API key - can be an env var placeholder like ${ENV_VAR_NAME}")
     embedding_model: Optional[str] = Field(None, description="Optional: Specific embedding model name, e.g., for OpenAI text-embedding-ada-002")
     max_tokens: int = Field(4096, description="Maximum number of tokens per request")
     max_input_tokens: Optional[int] = Field(

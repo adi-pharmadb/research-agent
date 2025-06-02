@@ -661,7 +661,7 @@ class LLM:
         tool_choice: TOOL_CHOICE_TYPE = ToolChoice.AUTO,
         temperature: Optional[float] = None,
         **kwargs,
-    ) -> Union[OpenAIChatCompletionMessage, MessageParam, None]:
+    ) -> Union[OpenAIChatCompletionMessage, AnthropicMessageParam, None]:
         try:
             if tool_choice not in TOOL_CHOICE_VALUES: raise ValueError(f"Invalid tool_choice: {tool_choice}")
             supports_images = self.model in MULTIMODAL_MODELS

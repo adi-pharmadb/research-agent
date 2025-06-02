@@ -17,7 +17,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.12" # Matches Dockerfile
       # - key: PORT # Removed to let Render inject its own PORT variable
-      - key: RESEARCH_AGENT_API_KEY
+      - key: 9620da7297830073ae2fb449b14e908b
         sync: false # Keep value in Render dashboard
       # Add other necessary environment variables here
     autoDeploy: true # Optional: automatically deploy on push to main branch
