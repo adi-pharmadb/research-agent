@@ -11,7 +11,13 @@ from openai import (
     RateLimitError as OpenAIRateLimitError,
 )
 from openai.types.chat import ChatCompletion, ChatCompletionMessage as OpenAIChatCompletionMessage
-from anthropic import AsyncAnthropic, AnthropicError
+from anthropic import (
+    AsyncAnthropic, 
+    AnthropicError, # Base error
+    APIError as AnthropicAPIError, # Specific aliased import
+    AuthenticationError as AnthropicAuthenticationError, # Specific aliased import
+    RateLimitError as AnthropicRateLimitError # Specific aliased import
+)
 from anthropic.types import MessageParam as AnthropicMessageParam
 from anthropic.types import MessageStreamEvent, TextBlockParam
 
@@ -476,15 +482,11 @@ class LLM:
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask method: {e}")
             logger.info("DEBUG: ask - In except (ValueError, AnthropicError, OpenAIError)")
-            if isinstance(e, OpenAIAuthenticationError):
-                logger.error("OpenAI Authentication failed. Check API key.")
-            elif isinstance(e, AnthropicError) and ("auth" in str(e).lower() or "key" in str(e).lower()):
-                logger.error(f"Anthropic Authentication/Key likely failed: {e}")
-            elif isinstance(e, OpenAIRateLimitError):
-                logger.error("OpenAI Rate limit exceeded.")
-            elif isinstance(e, AnthropicError) and "rate limit" in str(e).lower():
-                logger.error(f"Anthropic Rate limit likely exceeded: {e}")
-            elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
+            if isinstance(e, OpenAIAuthenticationError) or isinstance(e, AnthropicAuthenticationError):
+                logger.error("Authentication failed. Check API key and client configuration.")
+            elif isinstance(e, OpenAIRateLimitError) or isinstance(e, AnthropicRateLimitError):
+                logger.error("Rate limit exceeded.")
+            elif isinstance(e, OpenAIAPIError) or isinstance(e, AnthropicAPIError):
                  logger.error(f"Generic API error: {e}")
                  logger.info(f"DEBUG: ask - Caught APIError type: {type(e)}")
             raise
@@ -797,15 +799,11 @@ class LLM:
         except (ValueError, AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask_tool method: {e}")
             logger.info("DEBUG: ask_tool - In except (ValueError, AnthropicError, OpenAIError)")
-            if isinstance(e, OpenAIAuthenticationError):
-                logger.error("OpenAI Authentication failed. Check API key.")
-            elif isinstance(e, AnthropicError) and ("auth" in str(e).lower() or "key" in str(e).lower()):
-                logger.error(f"Anthropic Authentication/Key likely failed: {e}")
-            elif isinstance(e, OpenAIRateLimitError):
-                logger.error("OpenAI Rate limit exceeded.")
-            elif isinstance(e, AnthropicError) and "rate limit" in str(e).lower():
-                logger.error(f"Anthropic Rate limit likely exceeded: {e}")
-            elif isinstance(e, (OpenAIAPIError, AnthropicAPIError)):
+            if isinstance(e, OpenAIAuthenticationError) or isinstance(e, AnthropicAuthenticationError):
+                logger.error("Authentication failed. Check API key and client configuration.")
+            elif isinstance(e, OpenAIRateLimitError) or isinstance(e, AnthropicRateLimitError):
+                logger.error("Rate limit exceeded.")
+            elif isinstance(e, OpenAIAPIError) or isinstance(e, AnthropicAPIError):
                  logger.error(f"Generic API error: {e}")
                  logger.info(f"DEBUG: ask_tool - Caught APIError type: {type(e)}")
             raise
