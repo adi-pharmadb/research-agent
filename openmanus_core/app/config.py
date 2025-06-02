@@ -3,8 +3,10 @@ import threading
 import tomllib
 from pathlib import Path
 from typing import Dict, List, Optional
+import os
 
 from pydantic import BaseModel, Field
+from ..logger import logger
 
 
 def get_project_root() -> Path:
@@ -19,7 +21,7 @@ WORKSPACE_ROOT = PROJECT_ROOT / "workspace"
 class LLMSettings(BaseModel):
     model: str = Field(..., description="Model name")
     base_url: str = Field(..., description="API base URL")
-    api_key: str = Field(..., description="API key")
+    api_key: str = Field(..., description="API key - can be an env var placeholder like ${ENV_VAR_NAME}")
     embedding_model: Optional[str] = Field(None, description="Optional: Specific embedding model name, e.g., for OpenAI text-embedding-ada-002")
     max_tokens: int = Field(4096, description="Maximum number of tokens per request")
     max_input_tokens: Optional[int] = Field(
@@ -27,8 +29,8 @@ class LLMSettings(BaseModel):
         description="Maximum input tokens to use across all requests (None for unlimited)",
     )
     temperature: float = Field(1.0, description="Sampling temperature")
-    api_type: str = Field(..., description="Azure, Openai, or Ollama")
-    api_version: str = Field(..., description="Azure Openai version if AzureOpenai")
+    api_type: str = Field("", description="openai, azure, aws, anthropic, or ollama")
+    api_version: Optional[str] = Field(None, description="Azure Openai version if AzureOpenai")
 
 
 class ProxySettings(BaseModel):
@@ -194,6 +196,17 @@ class Config:
                     self._initialized = True
 
     @staticmethod
+    def _resolve_env_placeholder(value: Optional[str]) -> Optional[str]:
+        """Resolves placeholders like ${ENV_VAR} in strings."""
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            env_var_name = value[2:-1]
+            env_var_value = os.getenv(env_var_name)
+            if env_var_value is None:
+                logger.warning(f"Environment variable {env_var_name} not found for config placeholder.")
+            return env_var_value
+        return value
+
+    @staticmethod
     def _get_config_path() -> Path:
         root = PROJECT_ROOT
         config_path = root / "config" / "config.toml"
@@ -211,21 +224,35 @@ class Config:
 
     def _load_initial_config(self):
         raw_config = self._load_config()
-        base_llm = raw_config.get("llm", {})
-        llm_overrides = {
+        base_llm_config = raw_config.get("llm", {})
+        llm_profile_overrides = {
             k: v for k, v in raw_config.get("llm", {}).items() if isinstance(v, dict)
         }
 
-        default_settings = {
-            "model": base_llm.get("model"),
-            "base_url": base_llm.get("base_url"),
-            "api_key": base_llm.get("api_key"),
-            "max_tokens": base_llm.get("max_tokens", 4096),
-            "max_input_tokens": base_llm.get("max_input_tokens"),
-            "temperature": base_llm.get("temperature", 1.0),
-            "api_type": base_llm.get("api_type", ""),
-            "api_version": base_llm.get("api_version", ""),
+        # Process default LLM settings, resolving placeholders
+        default_llm_settings_data = {
+            "model": base_llm_config.get("model"),
+            "base_url": base_llm_config.get("base_url"),
+            "api_key": self._resolve_env_placeholder(base_llm_config.get("api_key")),
+            "embedding_model": self._resolve_env_placeholder(base_llm_config.get("embedding_model")),
+            "max_tokens": base_llm_config.get("max_tokens", 4096),
+            "max_input_tokens": base_llm_config.get("max_input_tokens"),
+            "temperature": base_llm_config.get("temperature", 1.0),
+            "api_type": base_llm_config.get("api_type", ""),
+            "api_version": base_llm_config.get("api_version"),
         }
+
+        processed_llm_profiles = {"default": LLMSettings(**{k: v for k, v in default_llm_settings_data.items() if v is not None}) }
+
+        for name, override_data in llm_profile_overrides.items():
+            profile_data = default_llm_settings_data.copy() # Start with defaults
+            profile_data.update(override_data) # Apply overrides
+            
+            # Resolve placeholders for overridden keys too
+            profile_data["api_key"] = self._resolve_env_placeholder(profile_data.get("api_key"))
+            profile_data["embedding_model"] = self._resolve_env_placeholder(profile_data.get("embedding_model"))
+            
+            processed_llm_profiles[name] = LLMSettings(**{k: v for k, v in profile_data.items() if v is not None})
 
         # handle browser config.
         browser_config = raw_config.get("browser", {})
@@ -285,13 +312,7 @@ class Config:
         else:
             run_flow_settings = RunflowSettings()
         config_dict = {
-            "llm": {
-                "default": default_settings,
-                **{
-                    name: {**default_settings, **override_config}
-                    for name, override_config in llm_overrides.items()
-                },
-            },
+            "llm": processed_llm_profiles,
             "sandbox": sandbox_settings,
             "browser_config": browser_settings,
             "search_config": search_settings,

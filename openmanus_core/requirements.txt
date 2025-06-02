@@ -44,3 +44,4 @@ pandas
 duckdb
 PyMuPDF
 chromadb
+anthropic
