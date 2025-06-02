@@ -56,7 +56,7 @@ logger.addHandler(stream_handler)
 
 # Global variables to hold the initialized components
 research_agent_instance = None
-redis_client = None
+redis_client: Optional[redis.Redis] = None # Typed redis_client
 
 # --- Lifespan Event Handler ---
 @asynccontextmanager
@@ -72,16 +72,21 @@ async def lifespan(app: FastAPI):
         logger.error(f"Could not initialize ResearchAgent (lifespan): {e}", exc_info=True)
         research_agent_instance = None
 
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    try:
-        redis_client = redis.from_url(redis_url, decode_responses=True)
-        redis_client.ping()
-        logger.info(f"Connected to Redis at {redis_url} (lifespan)")
-    except redis.exceptions.ConnectionError as e:
-        logger.error(f"Could not connect to Redis at {redis_url} (lifespan): {e}", exc_info=True)
-        redis_client = None
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during Redis initialization (lifespan): {e}", exc_info=True)
+    redis_url = os.getenv("REDIS_URL") # Get REDIS_URL, will be None if not set
+    if redis_url:
+        logger.info(f"REDIS_URL found, attempting connection: {redis_url}")
+        try:
+            redis_client = redis.from_url(redis_url, decode_responses=False) # decode_responses=False for storing JSON bytes
+            redis_client.ping()
+            logger.info(f"Connected to Redis at {redis_url} (lifespan)")
+        except redis.exceptions.ConnectionError as e:
+            logger.warning(f"Could not connect to Redis at {redis_url} (lifespan): {e}. Proceeding without Redis (tasks will be in-memory and non-persistent).")
+            redis_client = None
+        except Exception as e:
+            logger.warning(f"An unexpected error occurred during Redis initialization (lifespan): {e}. Proceeding without Redis.")
+            redis_client = None
+    else:
+        logger.info("REDIS_URL not set. Proceeding without Redis (tasks will be in-memory and non-persistent).")
         redis_client = None
     
     logger.info("Application setup finished (lifespan).")
@@ -170,7 +175,9 @@ class TaskStatusResponse(BaseModel):
 
 # In-memory store for task status and results
 # For production, use Redis or a database
-task_store: Dict[str, TaskStatus] = {}
+memory_task_store: Dict[str, TaskStatus] = {}
+REDIS_TASK_PREFIX = "task:"
+TASK_EXPIRY_SECONDS = 3600 * 24 # 1 day
 
 
 # --- Global Exception Handler ---
@@ -198,22 +205,31 @@ async def health_check():
 async def run_research_task(task_id: str, query: str):
     """Runs the research agent task in the background and updates the task_store."""
     logger.info(f"Task {task_id}: Starting research for query: {query[:50]}...")
-    task_store[task_id] = TaskStatus(
+    current_status = TaskStatus(
         status="in_progress", 
         timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
         result=None,
         error=None
     )
 
+    if redis_client:
+        redis_client.setex(f"{REDIS_TASK_PREFIX}{task_id}", TASK_EXPIRY_SECONDS, current_status.model_dump_json())
+    else:
+        memory_task_store[task_id] = current_status
+
     if not research_agent_instance:
         error_msg = "ResearchAgent not initialized. Cannot process task."
         logger.error(f"Task {task_id}: {error_msg}")
-        task_store[task_id] = TaskStatus(
+        current_status = TaskStatus(
             status="failed", 
             timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
             result=None, 
             error=error_msg
         )
+        if redis_client:
+            redis_client.setex(f"{REDIS_TASK_PREFIX}{task_id}", TASK_EXPIRY_SECONDS, current_status.model_dump_json())
+        else:
+            memory_task_store[task_id] = current_status
         return
 
     try:
@@ -240,7 +256,7 @@ async def run_research_task(task_id: str, query: str):
         agent_response = await research_agent_instance.run(query) 
 
         logger.info(f"Task {task_id}: Research completed. Result: {str(agent_response)[:100]}...")
-        task_store[task_id] = TaskStatus(
+        current_status = TaskStatus(
             status="completed", 
             timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
             result=agent_response, # Store the raw agent response
@@ -249,12 +265,17 @@ async def run_research_task(task_id: str, query: str):
     except Exception as e:
         error_msg = f"Error during research task: {e}"
         logger.error(f"Task {task_id}: {error_msg}", exc_info=True)
-        task_store[task_id] = TaskStatus(
+        current_status = TaskStatus(
             status="failed", 
             timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
             result=None, 
             error=error_msg
         )
+    
+    if redis_client:
+        redis_client.setex(f"{REDIS_TASK_PREFIX}{task_id}", TASK_EXPIRY_SECONDS, current_status.model_dump_json())
+    else:
+        memory_task_store[task_id] = current_status
 # --- End Background Task ---
 
 # New Agent Invocation Endpoint
@@ -272,12 +293,17 @@ async def invoke_agent_task(
         raise HTTPException(status_code=503, detail="ResearchAgent not initialized. Check server logs.")
 
     task_id = str(uuid.uuid4())
-    task_store[task_id] = TaskStatus(
+    initial_status = TaskStatus(
         status="pending", 
         timestamp=datetime.now(timezone.utc).isoformat(), # Changed to timezone-aware UTC
         result=None,
         error=None
     )
+    
+    if redis_client:
+        redis_client.setex(f"{REDIS_TASK_PREFIX}{task_id}", TASK_EXPIRY_SECONDS, initial_status.model_dump_json())
+    else:
+        memory_task_store[task_id] = initial_status
     
     background_tasks.add_task(run_research_task, task_id, request.query)
     
@@ -289,7 +315,16 @@ async def invoke_agent_task(
 async def get_agent_task_status(task_id: str, api_key: str = Depends(get_api_key)):
     """Retrieves the status and result (if available) of a previously submitted agent task."""
     logger.info(f"Received status request for task ID: {task_id}")
-    task_info = task_store.get(task_id)
+    task_info_json = None
+    if redis_client:
+        task_info_json = redis_client.get(f"{REDIS_TASK_PREFIX}{task_id}")
+        if task_info_json:
+            task_info = TaskStatus.model_validate_json(task_info_json)
+        else:
+            task_info = None
+    else:
+        task_info = memory_task_store.get(task_id)
+
     if not task_info:
         logger.warning(f"Task ID {task_id} not found.")
         raise HTTPException(status_code=404, detail=f"Task ID {task_id} not found")
@@ -300,7 +335,6 @@ async def get_agent_task_status(task_id: str, api_key: str = Depends(get_api_key
 # Remove the old /ask endpoint as it's replaced by /agent/invoke and /agent/tasks/... 
 # @app.post("/ask", response_model=AskResponse, summary="Ask the Research Agent")
 # async def ask_agent(request: AskRequest, api_key: str = Depends(get_api_key)):
-#     """Receives a research question, file references, and conversation history, then returns an answer."""
 #     logger.info(f"Received /ask request with question: {request.question[:50]}...")
 #     if not research_agent_instance: # Check renamed instance
 #         logger.error("ResearchAgent not initialized. Returning 503.")
@@ -338,5 +372,5 @@ async def get_agent_task_status(task_id: str, api_key: str = Depends(get_api_key
 # TODO: Define /metrics endpoint (T12) if needed -- This is already present from previous steps
 # Ensure uvicorn command is present for running the app, if it was removed.
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "10000")) # Default to 10000 if PORT not set
     uvicorn.run(app, host="0.0.0.0", port=port) 
