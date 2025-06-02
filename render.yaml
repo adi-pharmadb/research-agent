@@ -10,17 +10,15 @@ services:
         sync: false # Keep value in Render dashboard
       - key: BING_KEY
         sync: false # Keep value in Render dashboard
-      - key: REDIS_URL
-        fromService: # If using a Render Redis instance
-          type: redis
-          name: pharmadb-redis # Replace with your Render Redis service name
-        # Alternatively, if REDIS_URL is manually set:
-        # value: your-redis-connection-string
-        # sync: false 
+      # - key: REDIS_URL # Temporarily commented out until Render Redis is confirmed/set up
+      #   fromService:
+      #     type: redis
+      #     name: pharmadb-redis # Ensure this matches your Render Redis service name
       - key: PYTHON_VERSION
         value: "3.12" # Matches Dockerfile
-      - key: PORT
-        value: "8000" # Port your FastAPI app will listen on
+      # - key: PORT # Removed to let Render inject its own PORT variable
+      - key: RESEARCH_AGENT_API_KEY # For securing your microservice
+        sync: false # Keep value in Render dashboard
       # Add other necessary environment variables here
     autoDeploy: true # Optional: automatically deploy on push to main branch
     healthCheckPath: /healthz # T12: Add health check path
@@ -31,7 +29,7 @@ services:
 
 # Example Redis instance (if you create one on Render)
 # - type: redis
-#   name: pharmadb-redis
+#   name: pharmadb-redis # Must match the name used in fromService above
 #   plan: free # Or your preferred plan
-#   ipAllowList: [] # Configure as needed
+#   ipAllowList: [] # Configure as needed, e.g., ["0.0.0.0/0"] for open access (not recommended for prod)
 #   maxmemoryPolicy: allkeys-lru 
