@@ -356,7 +356,7 @@ class LLM:
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_exception_type((OpenAIError, AnthropicError, Exception, ValueError))
+        retry=retry_if_exception_type((OpenAIError, anthropic.AnthropicError, Exception, ValueError))
     )
     async def ask(
         self,
@@ -473,7 +473,7 @@ class LLM:
                     return full_response
 
         except TokenLimitExceeded: raise
-        except (ValueError, AnthropicError, OpenAIError) as e: # Catch specific API errors too
+        except (ValueError, anthropic.AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask method: {e}")
             if isinstance(e, (AuthenticationError, anthropic.AuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
@@ -484,7 +484,7 @@ class LLM:
 
     @retry(
         wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6),
-        retry=retry_if_exception_type((OpenAIError, AnthropicError, Exception, ValueError))
+        retry=retry_if_exception_type((OpenAIError, anthropic.AnthropicError, Exception, ValueError))
     )
     async def ask_with_images(
         self,
@@ -650,7 +650,7 @@ class LLM:
 
     @retry(
         wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6),
-        retry=retry_if_exception_type((OpenAIError, AnthropicError, Exception, ValueError))
+        retry=retry_if_exception_type((OpenAIError, anthropic.AnthropicError, Exception, ValueError))
     )
     async def ask_tool(
         self,
@@ -786,7 +786,7 @@ class LLM:
                 return response.choices[0].message
 
         except TokenLimitExceeded: raise
-        except (ValueError, AnthropicError, OpenAIError) as e:
+        except (ValueError, anthropic.AnthropicError, OpenAIError) as e:
             logger.exception(f"LLM API error in ask_tool method: {e}")
             if isinstance(e, (AuthenticationError, anthropic.AuthenticationError)):
                 logger.error("Authentication failed. Check API key and client configuration.")
