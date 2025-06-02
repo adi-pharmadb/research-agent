@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import os
 
 from pydantic import BaseModel, Field
-from .logger import logger
+from .logger import logger, setup_file_logging
 
 
 def get_project_root() -> Path:
@@ -193,6 +193,7 @@ class Config:
                 if not self._initialized:
                     self._config = None
                     self._load_initial_config()
+                    setup_file_logging(PROJECT_ROOT)
                     self._initialized = True
 
     @staticmethod
