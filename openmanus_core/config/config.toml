@@ -1,8 +1,8 @@
 # Global LLM configuration
 [llm]
-model = "claude-sonnet-4-20250514"       # Using a known common model name
+model = "claude-3-sonnet-20240229"       # CORRECTED - Please verify this is your intended and accessible model
 base_url = "https://api.anthropic.com/v1"
-api_key = "${ANTHROPIC_API_KEY}"          # To be set as an environment variable
+api_key = "${ANTHROPIC_API_KEY}"          # Use environment variable
 max_tokens = 8192
 temperature = 0.0
 api_type = "anthropic"                   # Explicitly set api_type
@@ -34,9 +34,9 @@ api_type = "anthropic"                   # Explicitly set api_type
 
 # Optional configuration for specific LLM models
 [llm.vision]
-model = "claude-sonnet-4-20250514"
+model = "claude-3-sonnet-20240229"       # CORRECTED - Please verify
 base_url = "https://api.anthropic.com/v1"
-api_key = "${ANTHROPIC_API_KEY}"          # Re-use the same env var or use a specific one
+api_key = "${ANTHROPIC_API_KEY}"          # Use environment variable
 max_tokens = 8192
 temperature = 0.0
 api_type = "anthropic"
