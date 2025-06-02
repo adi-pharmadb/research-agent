@@ -3,7 +3,7 @@ services:
     name: pharmadb-research-agent
     env: docker
     plan: free # Or your preferred plan, e.g., starter
-    dockerfilePath: ./openmanus_core/Dockerfile
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
       - key: OPENAI_API_KEY

@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy the OpenManus core and the new root-level requirements.txt
-COPY ./openmanus_core/requirements.txt ./openmanus_core_requirements.txt
+COPY openmanus_core/requirements.txt ./openmanus_core_requirements.txt
 # We'll create a new root requirements.txt for FastAPI and other direct dependencies
-COPY ./requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 
 # Install Python dependencies
 # First, install OpenManus core dependencies
@@ -24,10 +24,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 # Copy OpenManus core
-COPY ./openmanus_core ./openmanus_core
+COPY openmanus_core ./openmanus_core
 # Copy any other root-level Python files/directories your FastAPI app might have
 # For now, we'll assume main.py will be at the root
-COPY ./main.py .
+COPY main.py .
+COPY pharma_agent ./pharma_agent # Added to copy the pharma_agent directory if it exists and is needed
+COPY tests ./tests # Added to copy tests directory if needed for some reason in image (unlikely for prod)
 
 # Environment variable for the port, defaulting to 8000 if not set.
 # Render will set this based on render.yaml.
@@ -38,4 +40,4 @@ EXPOSE ${PORT}
 
 # Command to run the FastAPI application using Uvicorn
 # This assumes your FastAPI app instance is named 'app' in 'main.py'
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
